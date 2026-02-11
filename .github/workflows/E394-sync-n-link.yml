@@ -1,4 +1,4 @@
-name: E394 - Sync Fork and check link + cleanup actions
+name: 🔄 E394 - Sync & Link + Cleanup
 
 on:
   schedule:
