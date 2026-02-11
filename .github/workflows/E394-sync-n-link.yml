@@ -142,7 +142,7 @@ jobs:
             if ! git diff --staged --quiet; then
               echo "📝 Committando eliminazioni..."
               git commit -m "🗑️ Remove unwanted workflow files
-
+              
 - Removed: dockerhub.yml (outdated Docker Hub push)
 - Removed: dkhub.yml (duplicate Docker build)
 - Removed: issue-release-bump.yml (not needed)
