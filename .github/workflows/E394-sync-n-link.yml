@@ -26,14 +26,12 @@ jobs:
          
       - name: Configure Git user
         run: |
-        
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
       - name: Get upstream repository name dynamically
         id: upstream
         run: |
-        
           echo "📡 Recupero info sul repository..."
           API_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}"
           
@@ -48,21 +46,20 @@ jobs:
         
       - name: Sync with upstream
         run: |
-        
           echo "🔄 Sincronizzazione con $UPSTREAM_REPO..."
           UPSTREAM_URL="https://${GH_PAT}@github.com/${UPSTREAM_REPO}.git"
-        
+          
           git remote add upstream "$UPSTREAM_URL" || git remote set-url upstream "$UPSTREAM_URL"
           git fetch upstream
-        
+          
           # Verifica se ci sono differenze
           if git diff --quiet HEAD upstream/${DEFAULT_BRANCH}; then
             echo "✅ Il fork è già aggiornato"
             exit 0
           fi
           
-          echo "📝 Rilevate differenze, tentativo di rebase..."
-        
+          echo "🔍 Rilevate differenze, tentativo di rebase..."
+          
           # File da proteggere in caso di fallimento rebase
           PROTECTED_FILES=(
             ".github/workflows/E394-sync-n-link.yml"
@@ -75,7 +72,7 @@ jobs:
           else
             echo "⚠️ Rebase fallito - usando strategia reset + restore"
             git rebase --abort
-        
+            
             # Salva i file protetti
             echo "🛡️ Salvando file protetti..."
             mkdir -p /tmp/protected
@@ -86,13 +83,13 @@ jobs:
                 echo "  ✅ Salvato: $file"
               fi
             done
-        
+            
             # Reset hard a upstream (copia tutto)
             echo "🔄 Reset hard a upstream..."
             git reset --hard upstream/${DEFAULT_BRANCH}
             
             # Ripristina i file protetti
-            echo "🔄 Ripristinando file protetti..."
+            echo "📄 Ripristinando file protetti..."
             CHANGES_MADE=false
             for file in "${PROTECTED_FILES[@]}"; do
               if [[ -f "/tmp/protected/$file" ]]; then
@@ -103,7 +100,7 @@ jobs:
                 echo "  ✅ Ripristinato: $file"
               fi
             done
-       
+            
             # Committa i file ripristinati se necessario
             if [[ "$CHANGES_MADE" == "true" ]]; then
               if ! git diff --staged --quiet; then
@@ -141,12 +138,7 @@ jobs:
           if [[ "$FILES_DELETED" == "true" ]]; then
             if ! git diff --staged --quiet; then
               echo "📝 Committando eliminazioni..."
-              git commit -m "🗑️ Remove unwanted workflow files
-              
-- Removed: dockerhub.yml (outdated Docker Hub push)
-- Removed: dkhub.yml (duplicate Docker build)
-- Removed: issue-release-bump.yml (not needed)
-- Auto-cleanup after upstream sync"
+              git commit -m "🗑️ Remove unwanted workflow files - Auto-cleanup after upstream sync"
               echo "✅ Workflow file rimossi e committati!"
             fi
           else
@@ -165,7 +157,6 @@ jobs:
           # File da controllare
           FILES_TO_CHECK=(
             "Dockerfile"
-         
           )
           
           # Link problematici da cercare e sostituire
@@ -217,11 +208,7 @@ jobs:
             if ! git diff --quiet; then
               echo "📝 Committando correzioni link..."
               git add .
-              git commit -m "🔧 Fix repository links after sync
-
-- Fixed placeholder URLs (YourUsername/YourRepoName)
-- Updated upstream links to point to fork
-- Auto-corrected after upstream sync"
+              git commit -m "🔧 Fix repository links after sync - Auto-corrected after upstream sync"
               
               git push origin ${DEFAULT_BRANCH}
               echo "✅ Link repository corretti!"
