@@ -1,4 +1,4 @@
-name: E394 - Sync Fork and check link
+name: E394 - Sync Fork and check link + cleanup actions
 
 on:
   schedule:
@@ -11,6 +11,7 @@ env:
 
 jobs:
   sync:
+    name: "🔄 E394 - Sync & Link + Cleanup"
     runs-on: ubuntu-latest
     permissions:
       contents: write
