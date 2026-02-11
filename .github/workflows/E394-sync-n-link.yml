@@ -111,6 +111,46 @@ jobs:
               fi
             fi
           fi
+
+      - name: Delete unwanted workflow files
+        run: |
+          echo "🗑️ Eliminando workflow file non necessari..."
+          
+          FILES_TO_DELETE=(
+            ".github/workflows/dockerhub.yml"
+            ".github/workflows/dkhub.yml"
+            ".github/workflows/issue-release-bump.yml"
+          )
+          
+          FILES_DELETED=false
+          
+          for file in "${FILES_TO_DELETE[@]}"; do
+            if [[ -f "$file" ]]; then
+              echo "🗑️ Eliminando: $file"
+              rm "$file"
+              git add -u "$file"
+              FILES_DELETED=true
+              echo "  ✅ Eliminato: $file"
+            else
+              echo "  ℹ️ File non trovato: $file"
+            fi
+          done
+          
+          # Se sono stati eliminati file, fai commit
+          if [[ "$FILES_DELETED" == "true" ]]; then
+            if ! git diff --staged --quiet; then
+              echo "📝 Committando eliminazioni..."
+              git commit -m "🗑️ Remove unwanted workflow files
+
+- Removed: dockerhub.yml (outdated Docker Hub push)
+- Removed: dkhub.yml (duplicate Docker build)
+- Removed: issue-release-bump.yml (not needed)
+- Auto-cleanup after upstream sync"
+              echo "✅ Workflow file rimossi e committati!"
+            fi
+          else
+            echo "✅ Nessun file da eliminare"
+          fi
           
       - name: Push changes to fork
         run: |
@@ -124,7 +164,7 @@ jobs:
           # File da controllare
           FILES_TO_CHECK=(
             "Dockerfile"
-        
+         
           )
           
           # Link problematici da cercare e sostituire
@@ -178,9 +218,9 @@ jobs:
               git add .
               git commit -m "🔧 Fix repository links after sync
 
-              - Fixed placeholder URLs (YourUsername/YourRepoName)
-              - Updated upstream links to point to fork
-              - Auto-corrected after upstream sync"
+- Fixed placeholder URLs (YourUsername/YourRepoName)
+- Updated upstream links to point to fork
+- Auto-corrected after upstream sync"
               
               git push origin ${DEFAULT_BRANCH}
               echo "✅ Link repository corretti!"
