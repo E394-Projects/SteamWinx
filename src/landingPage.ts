@@ -426,6 +426,15 @@ function landingTemplate(manifest: any) {
 					<input type="text" id="guidedMfpUrl" placeholder="https://mfp.example.com" style="width: 100%; padding: 0.5rem; margin-bottom: 0.5rem; border: 1px solid rgba(140, 82, 255, 0.5); border-radius: 6px; background: rgba(20, 15, 35, 0.9); color: #fff;">
 					<p style="color: #aaa; margin: 0.5rem 0; font-size: 0.75rem;">Password (opzionale)</p>
 					<input type="password" id="guidedMfpPwd" placeholder="Password (opzionale)" style="width: 100%; padding: 0.5rem; border: 1px solid rgba(140, 82, 255, 0.5); border-radius: 6px; background: rgba(20, 15, 35, 0.9); color: #fff;">
+					<div style="margin-top:0.85rem;text-align:center;">
+						<div style="font-size:0.72rem;color:#c9b3ff;margin-bottom:0.4rem;font-weight:600;letter-spacing:0.04em;">Backend Proxy</div>
+						<div id="guidedBackendTrack" role="tablist" aria-label="Proxy backend"
+							style="position:relative;display:flex;width:260px;margin:0 auto;height:34px;background:rgba(20,15,35,0.9);border:1px solid rgba(140,82,255,0.5);border-radius:30px;cursor:pointer;user-select:none;overflow:hidden;box-shadow:inset 0 0 8px rgba(0,0,0,0.4);">
+							<div id="guidedBackendThumb" style="position:absolute;top:3px;left:3px;width:calc(50% - 3px);height:calc(100% - 6px);border-radius:30px;background:linear-gradient(135deg,#8c52ff,#5e2bbf);box-shadow:0 0 12px rgba(140,82,255,0.6);transition:left 0.25s ease, background 0.25s ease;"></div>
+							<button type="button" id="guidedBackendEasy" role="tab" aria-selected="true" style="flex:1;position:relative;z-index:2;background:transparent;border:none;color:#fff;font-weight:700;font-size:0.78rem;letter-spacing:0.04em;cursor:pointer;">EasyProxy</button>
+							<button type="button" id="guidedBackendMfp" role="tab" aria-selected="false" style="flex:1;position:relative;z-index:2;background:transparent;border:none;color:#aaa;font-weight:700;font-size:0.78rem;letter-spacing:0.04em;cursor:pointer;">MediaFlow</button>
+						</div>
+					</div>
 				</div>
 				<div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
 					<button id="confirmPresetBtn" type="button" style="padding: 0.7rem 1.5rem; background: #00c16e; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.3s ease;">
@@ -478,7 +487,7 @@ function landingTemplate(manifest: any) {
 					return;
 				}
 				// Sub-menu items: create hidden inputs to store their values from manifest
-				if (['animeunityDirect', 'animeunityDirectFhd', 'animeunityProxy', 'vixDirect', 'vixDirectFhd', 'vixProxy'].includes(key)) {
+				if (['animeunityDirect', 'animeunityDirectFhd', 'animeunityProxy', 'vixDirect', 'vixDirectFhd', 'vixProxy', 'useMediaFlow'].includes(key)) {
 					const isChecked = (typeof (elem as any).default === 'boolean') && ((elem as any).default as boolean);
 					const checkedAttr = isChecked ? ' checked' : '';
 					options += `<input type="checkbox" id="hidden_${key}" data-config-key="${key}" style="display:none;"${checkedAttr} />`;
@@ -650,6 +659,7 @@ function landingTemplate(manifest: any) {
 					if (!config['mediaflowMaster']) {
 						delete config['mediaFlowProxyUrl'];
 						delete config['mediaFlowProxyPassword'];
+						delete config['useMediaFlow'];
 					}
 					// (addonBase input removed – server resolved; nothing to store)
 					// tmdbApiKey always kept (UI hidden)
@@ -710,6 +720,67 @@ function landingTemplate(manifest: any) {
 				var mfpPwdInput = document.getElementById('mediaFlowProxyPassword');
 					var mfpUrlEl = mfpUrlInput ? mfpUrlInput.closest('.form-element') : null;
 					var mfpPwdEl = mfpPwdInput ? mfpPwdInput.closest('.form-element') : null;
+
+				// === Backend selector (EasyProxy / MediaFlow) ===
+				// Iniettato dopo il campo password MFP. Aggiorna l'hidden checkbox useMediaFlow.
+				try {
+					if (mfpPwdEl && !document.getElementById('proxyBackendSelector')) {
+						var hiddenUseMf = document.getElementById('hidden_useMediaFlow');
+						if (!hiddenUseMf) {
+							hiddenUseMf = document.createElement('input');
+							hiddenUseMf.type = 'checkbox';
+							hiddenUseMf.id = 'hidden_useMediaFlow';
+							hiddenUseMf.setAttribute('data-config-key', 'useMediaFlow');
+							hiddenUseMf.style.display = 'none';
+							// Place it inside the main form so buildConfigFromForm picks it up
+							(mainForm || document.body).appendChild(hiddenUseMf);
+						}
+						var sel = document.createElement('div');
+						sel.id = 'proxyBackendSelector';
+						sel.className = 'form-element';
+						sel.style.cssText = 'max-width:480px;margin:0.75rem auto 0.5rem auto;text-align:center;';
+						sel.innerHTML = ''
+							+ '<div style="font-size:0.78rem;color:#c9b3ff;margin-bottom:0.5rem;font-weight:600;letter-spacing:0.04em;">Backend Proxy</div>'
+							+ '<div id="proxyBackendTrack" role="tablist" aria-label="Proxy backend" '
+							+ 'style="position:relative;display:flex;width:280px;margin:0 auto;height:38px;'
+							+ 'background:rgba(20,15,35,0.9);border:1px solid rgba(140,82,255,0.5);'
+							+ 'border-radius:30px;cursor:pointer;user-select:none;overflow:hidden;'
+							+ 'box-shadow:inset 0 0 8px rgba(0,0,0,0.4);">'
+								+ '<div id="proxyBackendThumb" style="position:absolute;top:3px;left:3px;'
+								+ 'width:calc(50% - 3px);height:calc(100% - 6px);border-radius:30px;'
+								+ 'background:linear-gradient(135deg,#8c52ff,#5e2bbf);'
+								+ 'box-shadow:0 0 12px rgba(140,82,255,0.6);'
+								+ 'transition:left 0.25s ease, background 0.25s ease;"></div>'
+								+ '<button type="button" id="proxyBackendEasy" role="tab" aria-selected="true" '
+								+ 'style="flex:1;position:relative;z-index:2;background:transparent;border:none;'
+								+ 'color:#fff;font-weight:700;font-size:0.82rem;letter-spacing:0.04em;cursor:pointer;">'
+								+ 'EasyProxy</button>'
+								+ '<button type="button" id="proxyBackendMfp" role="tab" aria-selected="false" '
+								+ 'style="flex:1;position:relative;z-index:2;background:transparent;border:none;'
+								+ 'color:#aaa;font-weight:700;font-size:0.82rem;letter-spacing:0.04em;cursor:pointer;">'
+								+ 'MediaFlow</button>'
+							+ '</div>';
+						mfpPwdEl.parentNode.insertBefore(sel, mfpPwdEl.nextSibling);
+						var pbThumb = document.getElementById('proxyBackendThumb');
+						var pbEasy = document.getElementById('proxyBackendEasy');
+						var pbMfp = document.getElementById('proxyBackendMfp');
+						function applyBackend(useMf){
+							if (useMf) {
+								if (pbThumb) { pbThumb.style.left = 'calc(50% + 0px)'; pbThumb.style.background = 'linear-gradient(135deg,#4ad7ff,#1a8fb8)'; pbThumb.style.boxShadow = '0 0 14px rgba(74,215,255,0.6)'; }
+								if (pbEasy) { pbEasy.style.color = '#aaa'; pbEasy.setAttribute('aria-selected','false'); }
+								if (pbMfp) { pbMfp.style.color = '#fff'; pbMfp.setAttribute('aria-selected','true'); }
+							} else {
+								if (pbThumb) { pbThumb.style.left = '3px'; pbThumb.style.background = 'linear-gradient(135deg,#8c52ff,#5e2bbf)'; pbThumb.style.boxShadow = '0 0 12px rgba(140,82,255,0.6)'; }
+								if (pbEasy) { pbEasy.style.color = '#fff'; pbEasy.setAttribute('aria-selected','true'); }
+								if (pbMfp) { pbMfp.style.color = '#aaa'; pbMfp.setAttribute('aria-selected','false'); }
+							}
+							if (hiddenUseMf) hiddenUseMf.checked = !!useMf;
+						}
+						applyBackend(!!hiddenUseMf.checked);
+						if (pbEasy) pbEasy.addEventListener('click', function(){ applyBackend(false); if (typeof window.updateLink === 'function') window.updateLink(); });
+						if (pbMfp) pbMfp.addEventListener('click', function(){ applyBackend(true); if (typeof window.updateLink === 'function') window.updateLink(); });
+					}
+				} catch(e) { console.warn('proxyBackendSelector init failed', e); }
 				var animeUnityEl = document.getElementById('animeunityEnabled');
 				// --- AnimeUnity Submenu (Direct / Synthetic FHD / Proxy) ---
 				try {
@@ -903,6 +974,9 @@ function landingTemplate(manifest: any) {
 						}
 						if (dvrRow) setRowState(dvrRow);
 					}
+					// Backend selector visibility (EasyProxy / MediaFlow)
+					var backendEl = document.getElementById('proxyBackendSelector');
+					if (backendEl) backendEl.style.display = on ? 'block' : 'none';
 				}
 				if (mfpMaster){ mfpMaster.addEventListener('change', function(){ syncMfp(); updateLink(); }); syncMfp(); }
 				if (mfpUrlInput) { mfpUrlInput.addEventListener('input', function(){ syncMfp(); updateLink(); }); }
@@ -1458,6 +1532,28 @@ function landingTemplate(manifest: any) {
 				var cancelPresetBtn = document.getElementById('cancelPresetBtn');
 				var presetGrid = document.getElementById('presetGrid');
 				var selectedPresetKey = null;
+				var guidedUseMediaFlow = false;
+
+				// Wire up guided backend selector (EasyProxy / MediaFlow)
+				try {
+					var gbThumb = document.getElementById('guidedBackendThumb');
+					var gbEasy = document.getElementById('guidedBackendEasy');
+					var gbMfp = document.getElementById('guidedBackendMfp');
+					function applyGuidedBackend(useMf){
+						guidedUseMediaFlow = !!useMf;
+						if (useMf) {
+							if (gbThumb) { gbThumb.style.left = 'calc(50% + 0px)'; gbThumb.style.background = 'linear-gradient(135deg,#4ad7ff,#1a8fb8)'; gbThumb.style.boxShadow = '0 0 14px rgba(74,215,255,0.6)'; }
+							if (gbEasy) { gbEasy.style.color = '#aaa'; gbEasy.setAttribute('aria-selected','false'); }
+							if (gbMfp) { gbMfp.style.color = '#fff'; gbMfp.setAttribute('aria-selected','true'); }
+						} else {
+							if (gbThumb) { gbThumb.style.left = '3px'; gbThumb.style.background = 'linear-gradient(135deg,#8c52ff,#5e2bbf)'; gbThumb.style.boxShadow = '0 0 12px rgba(140,82,255,0.6)'; }
+							if (gbEasy) { gbEasy.style.color = '#fff'; gbEasy.setAttribute('aria-selected','true'); }
+							if (gbMfp) { gbMfp.style.color = '#aaa'; gbMfp.setAttribute('aria-selected','false'); }
+						}
+					}
+					if (gbEasy) gbEasy.addEventListener('click', function(){ applyGuidedBackend(false); });
+					if (gbMfp) gbMfp.addEventListener('click', function(){ applyGuidedBackend(true); });
+				} catch(e) { console.warn('guided backend selector init failed', e); }
 
 				presetCards.forEach(function(card){
 					card.addEventListener('click', function(){
@@ -1515,6 +1611,7 @@ function landingTemplate(manifest: any) {
 					if(preset.mfp){
 						config.mediaFlowProxyUrl = guidedMfpUrl ? guidedMfpUrl.value.trim() : '';
 						config.mediaFlowProxyPassword = guidedMfpPwd ? guidedMfpPwd.value.trim() : '';
+						config.useMediaFlow = !!guidedUseMediaFlow;
 					}
 
 					// Show FastMode popup
