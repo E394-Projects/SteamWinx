@@ -62,6 +62,8 @@ interface AddonConfig {
     tmdbApiKey?: string;
     mediaFlowProxyUrl?: string;
     mediaFlowProxyPassword?: string;
+    // Proxy backend toggle: false/undefined = EasyProxy (default), true = MediaFlow Proxy.
+    useMediaFlow?: boolean;
     enableMpd?: boolean;
     animeunityEnabled?: boolean;
     animesaturnEnabled?: boolean;
@@ -469,8 +471,10 @@ const execFilePromise = util.promisify(execFile);
 const dynamicStreamCache = new Map<string, { finalUrl: string; ts: number }>();
 const DYNAMIC_STREAM_TTL_MS = 5 * 60 * 1000; // 5 minuti
 
-async function resolveDynamicEventUrl(dUrl: string, providerTitle: string, mfpUrl?: string, mfpPsw?: string): Promise<{ url: string; title: string }> {
+async function resolveDynamicEventUrl(dUrl: string, providerTitle: string, mfpUrl?: string, mfpPsw?: string, useMediaFlow?: boolean): Promise<{ url: string; title: string }> {
     if (!mfpUrl) return { url: dUrl, title: providerTitle };
+    // DLHD non è supportato da MediaFlow Proxy: ritorna l'URL grezzo senza wrapping.
+    if (useMediaFlow) return { url: dUrl, title: providerTitle };
     // Normalizza mfpUrl per evitare doppio slash
     const mfpBase = mfpUrl.replace(/\/+$/, '');
     const cacheKey = `${mfpBase}|${mfpPsw || ''}|${dUrl}`;
@@ -871,6 +875,7 @@ const baseManifest: Manifest = {
         { key: "tmdbApiKey", title: "TMDB API Key", type: "text" },
         { key: "mediaFlowProxyUrl", title: "☂️ Proxy URL", type: "text" },
         { key: "mediaFlowProxyPassword", title: "Proxy Password (opzionale)", type: "text" },
+        { key: "useMediaFlow", title: "Usa MediaFlow Proxy (default: EasyProxy)", type: "checkbox", default: false },
         { key: "dvrEnabled", title: "DVR (EasyProxy only) 📹", type: "checkbox" },
         // { key: "enableMpd", title: "Enable MPD Streams", type: "checkbox" },
         { key: "disableVixsrc", title: "Disable StreamingCommunity", type: "checkbox" },
@@ -3074,10 +3079,16 @@ function createBuilder(initialConfig: AddonConfig = {}) {
                         console.log(`✅ Found Freeshot stream for: ${fsCh.name}`);
                         const fsMfpUrl = (requestConfig?.mediaFlowProxyUrl || configCache?.mediaFlowProxyUrl || process.env.MFP_URL || '').replace(/\/+$/, '');
                         const fsMfpPsw = requestConfig?.mediaFlowProxyPassword || configCache?.mediaFlowProxyPassword || process.env.MFP_PSW || '';
+                        const fsUseMediaFlow = (() => {
+                            const v: any = requestConfig?.useMediaFlow ?? configCache?.useMediaFlow;
+                            if (v === true || v === 'true' || v === 'on' || v === 1 || v === '1') return true;
+                            const env = (process.env.PROXY_BACKEND || process.env.MFP_BACKEND || '').toLowerCase();
+                            return env === 'mediaflow' || env === 'mfp';
+                        })();
                         let fsFinalUrl = '';
                         let fsTitle = '🔴 LIVE';
 
-                        if (fsMfpUrl) {
+                        if (fsMfpUrl && !fsUseMediaFlow) {
                             // Proxy-Side: popcdn → MFP
                             const popcdnUrl = `https://popcdn.day/go.php?stream=${encodeURIComponent(fsMatch.code)}&filename=manifest.m3u8`;
                             const { formatMediaFlowUrl } = await import('./utils/mediaflow');
@@ -3086,6 +3097,10 @@ function createBuilder(initialConfig: AddonConfig = {}) {
                                 fsFinalUrl = fsFinalUrl.replace('/proxy/stream/', '/proxy/hls/');
                             }
                             fsTitle = '🌐 🔴 LIVE';
+                        } else if (fsUseMediaFlow) {
+                            // MediaFlow non ha l'extractor Freeshot custom: pubblica popcdn diretto.
+                            fsFinalUrl = `https://popcdn.day/go.php?stream=${encodeURIComponent(fsMatch.code)}&filename=manifest.m3u8`;
+                            fsTitle = '🔴 LIVE';
                         } else {
                             // Senza MFP, Freeshot non funziona
                             console.warn(`[Freeshot] MFP non configurato, nessuno stream per ${fsCh.name}`);
@@ -3155,7 +3170,17 @@ function createBuilder(initialConfig: AddonConfig = {}) {
                 // NORMALIZZA: rimuovi trailing slash per evitare doppi slash in URL tipo /proxy/...
                 const mfpUrl = (config.mediaFlowProxyUrl || process.env.MFP_URL || '').toString().trim().replace(/\/+$/, '');
                 const mfpPsw = (config.mediaFlowProxyPassword || process.env.MFP_PSW || process.env.MFP_PASSWORD || '').toString().trim();
-                console.log(`🔧 [MFP] User config: url=${mfpUrl || '(none)'} pass=${mfpPsw ? 'SET' : '(none)'}`);
+                // Backend del proxy: false/undefined = EasyProxy (default), true = MediaFlow.
+                // Quando MediaFlow alcuni endpoint custom (DLHD, Freeshot) non esistono e gli host
+                // resolver-based (VixCloud, Mixdrop, Sportsonline, Vavoo) richiedono /extractor/video.m3u8.
+                const useMediaFlow = (() => {
+                    const v: any = (config as any).useMediaFlow;
+                    if (v === true || v === 'true' || v === 'on' || v === 1 || v === '1') return true;
+                    const env = (process.env.PROXY_BACKEND || process.env.MFP_BACKEND || '').toLowerCase();
+                    if (env === 'mediaflow' || env === 'mfp') return true;
+                    return false;
+                })();
+                console.log(`🔧 [MFP] User config: url=${mfpUrl || '(none)'} pass=${mfpPsw ? 'SET' : '(none)'} backend=${useMediaFlow ? 'MediaFlow' : 'EasyProxy'}`);
 
                 const allStreams: Stream[] = [];
 
@@ -3639,7 +3664,11 @@ function createBuilder(initialConfig: AddonConfig = {}) {
                                         try {
                                             if (mfpUrl) {
                                                 const passwordParam = mfpPsw ? `&api_password=${encodeURIComponent(mfpPsw)}` : '';
-                                                const finalUrl2 = `${mfpUrl}/proxy/hls/manifest.m3u8?d=${encodeURIComponent(vUrl)}${passwordParam}`;
+                                                // EasyProxy: resolver custom server-side per vavoo su /proxy/hls.
+                                                // MediaFlow: serve l'extractor esplicito host=Vavoo (.m3u8 raccomandato per HLS).
+                                                const finalUrl2 = useMediaFlow
+                                                    ? `${mfpUrl}/extractor/video.m3u8?host=Vavoo&d=${encodeURIComponent(vUrl)}&redirect_stream=true${passwordParam}`
+                                                    : `${mfpUrl}/proxy/hls/manifest.m3u8?d=${encodeURIComponent(vUrl)}${passwordParam}`;
                                                 const title3 = `🌐 ${alias} (Vavoo/MFP) [ITA]`;
                                                 let insertAt = 0;
                                                 try { if (streams.length && /(\(Vavoo\))/i.test(streams[0].title)) insertAt = 1; } catch { }
@@ -3741,11 +3770,15 @@ function createBuilder(initialConfig: AddonConfig = {}) {
                             if (itaRegex.test(providerTitle) && !providerTitle.startsWith('🇮🇹')) providerTitle = `🇮🇹 ${providerTitle}`;
 
                             // Costruiamo direttamente il link proxy/hls (NIENTE extractor, NIENTE redirect)
-                            if (mfpUrl) {
+                            if (mfpUrl && !useMediaFlow) {
                                 const passwordParam = mfpPsw ? `api_password=${encodeURIComponent(mfpPsw)}&` : '';
                                 const finalUrl = `${mfpUrl}/proxy/hls/manifest.m3u8?${passwordParam}d=${encodeURIComponent(d.url)}`;
                                 resolved.push({ url: finalUrl, title: providerTitle });
                                 debugLog(`[DynamicStreams][ON-DEMAND] Link DLHD diretto proxy/hls: ${providerTitle} -> ${finalUrl}`);
+                            } else if (useMediaFlow) {
+                                // MediaFlow non supporta DLHD: pubblichiamo l'URL grezzo (player esterno).
+                                resolved.push({ url: d.url, title: providerTitle });
+                                debugLog(`[DynamicStreams][ON-DEMAND] MediaFlow attivo: link DLHD senza proxy ${providerTitle}`);
                             } else {
                                 // Niente MFP URL
                                 // Se è un canale PPV o l'URL è già un proxy, lo permettiamo diretto
@@ -3809,13 +3842,17 @@ function createBuilder(initialConfig: AddonConfig = {}) {
                                     const popcdnUrl = `https://popcdn.day/go.php?stream=${encodeURIComponent(code)}`;
                                     const popcdnUrlWithFilename = `${popcdnUrl}&filename=manifest.m3u8`;
 
-                                    frUrl = formatMediaFlowUrl(popcdnUrlWithFilename, mfpUrl, mfpPsw || '');
-
-                                    if (frUrl.includes('/proxy/stream/')) {
-                                        frUrl = frUrl.replace('/proxy/stream/', '/proxy/hls/');
+                                    if (useMediaFlow) {
+                                        // MediaFlow non ha l'extractor Freeshot: link diretto senza proxy.
+                                        frUrl = popcdnUrlWithFilename;
+                                    } else {
+                                        frUrl = formatMediaFlowUrl(popcdnUrlWithFilename, mfpUrl, mfpPsw || '');
+                                        if (frUrl.includes('/proxy/stream/')) {
+                                            frUrl = frUrl.replace('/proxy/stream/', '/proxy/hls/');
+                                        }
                                     }
 
-                                    debugLog(`Freeshot (Proxy-Side) aggiunto per ${frName}: ${frUrl}`);
+                                    debugLog(`Freeshot ${useMediaFlow ? '(MediaFlow direct)' : '(Proxy-Side)'} aggiunto per ${frName}: ${frUrl}`);
                                 }
 
                                 if (frUrl) {
@@ -4305,6 +4342,12 @@ function createBuilder(initialConfig: AddonConfig = {}) {
                                 t = t.replace(/^\s*\[(FAST|Player Esterno)\]\s*/i, '').trim();
                                 // NON aggiungiamo più [Player Esterno]: tutti i daddy ora usano proxy/hls
                                 // Costruiamo direttamente proxy/hls (NIENTE extractor)
+                                if (useMediaFlow) {
+                                    // MediaFlow non supporta DLHD: pubblica URL grezzo (player esterno)
+                                    streams.push({ url: e.url, title: t });
+                                    appended++;
+                                    continue;
+                                }
                                 const passwordParam = mfpPsw ? `api_password=${encodeURIComponent(mfpPsw)}&` : '';
                                 const finalUrl = `${mfpUrl}/proxy/hls/manifest.m3u8?${passwordParam}d=${encodeURIComponent(e.url)}`;
                                 streams.push({ url: finalUrl, title: t });
@@ -4468,11 +4511,16 @@ function createBuilder(initialConfig: AddonConfig = {}) {
                                     const { code } = match;
                                     const popcdnUrl = `https://popcdn.day/go.php?stream=${encodeURIComponent(code)}`;
                                     const popcdnUrlWithFilename = `${popcdnUrl}&filename=manifest.m3u8`;
-                                    frUrl = formatMediaFlowUrl(popcdnUrlWithFilename, mfpUrl, mfpPsw || '');
-                                    if (frUrl.includes('/proxy/stream/')) {
-                                        frUrl = frUrl.replace('/proxy/stream/', '/proxy/hls/');
+                                    if (useMediaFlow) {
+                                        // MediaFlow non ha l'extractor Freeshot: link diretto senza proxy.
+                                        frUrl = popcdnUrlWithFilename;
+                                    } else {
+                                        frUrl = formatMediaFlowUrl(popcdnUrlWithFilename, mfpUrl, mfpPsw || '');
+                                        if (frUrl.includes('/proxy/stream/')) {
+                                            frUrl = frUrl.replace('/proxy/stream/', '/proxy/hls/');
+                                        }
                                     }
-                                    debugLog(`Freeshot (Proxy-Side Static) aggiunto per ${frName}: ${frUrl}`);
+                                    debugLog(`Freeshot ${useMediaFlow ? '(MediaFlow direct Static)' : '(Proxy-Side Static)'} aggiunto per ${frName}: ${frUrl}`);
                                 }
 
                                 if (frUrl) {
@@ -5126,7 +5174,14 @@ function createBuilder(initialConfig: AddonConfig = {}) {
                     }
                     // La versione D classica resta condizionata alla presenza MFP URL (altrimenti occultata come prima)
                     if ((channel as any).staticUrlD) {
-                        if (mfpUrl) {
+                        if (mfpUrl && useMediaFlow) {
+                            // MediaFlow non supporta DLHD: pubblichiamo l'URL grezzo (player esterno)
+                            streams.push({
+                                url: (channel as any).staticUrlD,
+                                title: `[🌐D] ${channel.name} [ITA]`
+                            });
+                            debugLog(`(MediaFlow) staticUrlD pubblicato senza wrap: ${(channel as any).staticUrlD}`);
+                        } else if (mfpUrl) {
                             // LAZY MODE: wrap diretto come dynamic (veloce), MFP estrae al click
                             // EAGER MODE: estrazione preventiva (lento ma completo)
                             // Controllato da env STATIC_DADDY_LAZY (default: 1 = lazy/veloce)
@@ -5621,7 +5676,11 @@ function createBuilder(initialConfig: AddonConfig = {}) {
                                                     const italianFlag = /^(hd7|hd8)$/i.test(row.channelCode) ? ' 🇮🇹' : '';
                                                     // Wrap diretto: MFP gestirà estrazione iframe + unpacking server-side
                                                     const passwordParamSpon = mfpPsw ? `&api_password=${encodeURIComponent(mfpPsw)}` : '';
-                                                    const wrapped = `${mfpUrl.replace(/\/$/, '')}/proxy/hls/manifest.m3u8?d=${encodeURIComponent(row.url)}${passwordParamSpon}`;
+                                                    // EasyProxy ha un resolver custom server-side per sportzonline su /proxy/hls.
+                                                    // MediaFlow richiede l'extractor esplicito host=Sportsonline (.m3u8 raccomandato per HLS).
+                                                    const wrapped = useMediaFlow
+                                                        ? `${mfpUrl.replace(/\/$/, '')}/extractor/video.m3u8?host=Sportsonline&d=${encodeURIComponent(row.url)}&redirect_stream=true${passwordParamSpon}`
+                                                        : `${mfpUrl.replace(/\/$/, '')}/proxy/hls/manifest.m3u8?d=${encodeURIComponent(row.url)}${passwordParamSpon}`;
                                                     // Titolo semplificato: solo [SPON 🇮🇹] (TAG) senza dettagli evento
                                                     collected.push({ url: wrapped, title: `[SPON${italianFlag}] (${tag})` } as any);
                                                     debugLog(`[SPON][ROW] wrapped ${tag}`);
@@ -6526,6 +6585,7 @@ function createBuilder(initialConfig: AddonConfig = {}) {
                                 tmdbApiKey: config.tmdbApiKey || process.env.TMDB_API_KEY || '40a9faa1f6741afb2c0c40238d85f8d0',
                                 mfpUrl: mfpUrl,
                                 mfpPsw: mfpPsw,
+                                useMediaFlow: useMediaFlow,
                                 // vixLocal flag removed (property not in config)
                                 vixDual: !!(config as any)?.vixDual,
                                 // API Mode: force vixDirect=true, disable FHD (no proxy needed)
@@ -6662,7 +6722,8 @@ function createBuilder(initialConfig: AddonConfig = {}) {
                                 enabled: true,
                                 tmdbApiKey: config.tmdbApiKey || process.env.TMDB_API_KEY || '40a9faa1f6741afb2c0c40238d85f8d0',
                                 mfpUrl: mfpUrl,
-                                mfpPassword: mfpPsw
+                                mfpPassword: mfpPsw,
+                                useMediaFlow: useMediaFlow
                             });
                             if (id.startsWith('tt')) return ghProvider.handleImdbRequest(id, seasonNumber, episodeNumber, isMovie);
                             if (id.startsWith('tmdb:')) return ghProvider.handleTmdbRequest(id.replace('tmdb:', ''), seasonNumber, episodeNumber, isMovie);
@@ -6678,8 +6739,9 @@ function createBuilder(initialConfig: AddonConfig = {}) {
                                 enabled: true,
                                 mfpUrl: mfpUrl,
                                 mfpPassword: mfpPsw,
-                                tmdbApiKey: config.tmdbApiKey || process.env.TMDB_API_KEY || '40a9faa1f6741afb2c0c40238d85f8d0'
-                            });
+                                tmdbApiKey: config.tmdbApiKey || process.env.TMDB_API_KEY || '40a9faa1f6741afb2c0c40238d85f8d0',
+                                useMediaFlow: useMediaFlow
+                            } as any);
                             return cbProvider.handleImdbRequest(id, seasonNumber, episodeNumber, isMovie);
                         }, providerLabel('cb01'), true, 30000);  // CB01: timeout 30s
                     }
@@ -6692,7 +6754,8 @@ function createBuilder(initialConfig: AddonConfig = {}) {
                                 enabled: true,
                                 mfpUrl: mfpUrl,
                                 mfpPassword: mfpPsw,
-                                tmdbApiKey: config.tmdbApiKey || process.env.TMDB_API_KEY || '40a9faa1f6741afb2c0c40238d85f8d0'
+                                tmdbApiKey: config.tmdbApiKey || process.env.TMDB_API_KEY || '40a9faa1f6741afb2c0c40238d85f8d0',
+                                useMediaFlow: useMediaFlow
                             });
                             return esProvider.handleImdbRequest(id, seasonNumber, episodeNumber, isMovie);
                         }, providerLabel('eurostreaming'), true, 30000);  // Eurostreaming: timeout 30s
