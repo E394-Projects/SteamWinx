@@ -49,7 +49,7 @@ function resolvePython(): string {
 }
 import type { StreamForStremio } from '../types/animeunity';
 
-export interface EurostreamingConfig { enabled: boolean; mfpUrl?: string; mfpPassword?: string; tmdbApiKey?: string; }
+export interface EurostreamingConfig { enabled: boolean; mfpUrl?: string; mfpPassword?: string; tmdbApiKey?: string; useMediaFlow?: boolean; }
 
 interface PyResult { streams?: Array<{ url: string; title?: string; player?: string; size?: string; res?: string; lang?: string; match_pct?: number|null }>; error?: string }
 
@@ -183,7 +183,13 @@ export class EurostreamingProvider {
             const base = this.config.mfpUrl.replace(/\/$/, '');
             const encoded = encodeURIComponent(s.url);
             const passwordParam = this.config.mfpPassword ? `&api_password=${encodeURIComponent(this.config.mfpPassword)}` : '';
-            finalUrl = `${base}/proxy/stream?d=${encoded}${passwordParam}`;
+            // EasyProxy: /proxy/stream con auto-resolver custom server-side.
+            // MediaFlow: serve l'extractor esplicito host=Mixdrop (.m3u8 raccomandato per HLS).
+            if ((this.config as any).useMediaFlow) {
+              finalUrl = `${base}/extractor/video.m3u8?host=Mixdrop&d=${encoded}&redirect_stream=true${passwordParam}`;
+            } else {
+              finalUrl = `${base}/proxy/stream?d=${encoded}${passwordParam}`;
+            }
           }
         } else if (h.includes('maxstream') || h.includes('uprot') || /^Maxstream$/i.test(s.player || '')) {
           playerName = 'Maxstream';
