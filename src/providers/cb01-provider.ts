@@ -38,7 +38,7 @@ const CB01_DEBUG = (() => { const f = envFlag('CB01_DEBUG'); return f === null ?
 const log = (...a: unknown[]) => { if (CB01_DEBUG) { try { console.log('[CB01]', ...a); } catch { } } };
 const warn = (...a: unknown[]) => { try { console.warn('[CB01]', ...a); } catch { } };
 
-interface Cb01Config { enabled: boolean; mfpUrl?: string; mfpPassword?: string; tmdbApiKey?: string }
+interface Cb01Config { enabled: boolean; mfpUrl?: string; mfpPassword?: string; tmdbApiKey?: string; useMediaFlow?: boolean }
 
 interface FlowResult {
     mixdropUrl: string;
@@ -640,7 +640,13 @@ export class Cb01Provider {
                 log('mixdrop embed no id pattern, using original', { original: originalEmbed });
             }
             const encodedD = encodeURIComponent(dUrl);
-            extractorUrl = `${mfpBase}/proxy/stream?d=${encodedD}${passwordParam}`;
+            // EasyProxy: /proxy/stream auto-resolver custom server-side.
+            // MediaFlow: serve l'extractor esplicito host=Mixdrop (.m3u8 raccomandato per HLS).
+            if ((this as any).config?.useMediaFlow) {
+                extractorUrl = `${mfpBase}/extractor/video.m3u8?host=Mixdrop&d=${encodedD}&redirect_stream=true${passwordParam}`;
+            } else {
+                extractorUrl = `${mfpBase}/proxy/stream?d=${encodedD}${passwordParam}`;
+            }
             hostLabel = 'Mixdrop';
             log('mixdrop extractor url built', { dUrl, extractorUrl });
         }
@@ -681,4 +687,3 @@ export class Cb01Provider {
         } catch (e) { warn('stayMeta error', String(e)); return null; }
     }
 }
-
