@@ -16,7 +16,7 @@ import { getTmdbIdFromImdbId } from '../extractor';
 import * as fs from 'fs';
 import * as path from 'path';
 
-export interface GuardaHdConfig { enabled: boolean; mfpUrl?: string; mfpPassword?: string; tmdbApiKey?: string }
+export interface GuardaHdConfig { enabled: boolean; mfpUrl?: string; mfpPassword?: string; tmdbApiKey?: string; useMediaFlow?: boolean }
 
 // Cache structure: Store only the embed URL and the resolved title
 interface EmbedCacheEntry {
@@ -233,7 +233,8 @@ export class GuardaHdProvider {
                     mfpUrl: this.config.mfpUrl,
                     mfpPassword: this.config.mfpPassword,
                     countryCode: 'IT',
-                    titleHint
+                    titleHint,
+                    useMediaFlow: this.config.useMediaFlow
                 });
 
                 for (const s of streams) {
