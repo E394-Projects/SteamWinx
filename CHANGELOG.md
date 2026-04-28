@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.17.54](https://github.com/qwertyuiop8899/streamvix/compare/v1.17.53...v1.17.54) (2026-04-28)
+
+
+### Bug Fixes
+
+* addon.ts ([b55f1fe](https://github.com/qwertyuiop8899/streamvix/commit/b55f1feeaf208167552b06d72f89cd2c0bdff050))
+* base.ts ([6304fc2](https://github.com/qwertyuiop8899/streamvix/commit/6304fc2c9586eae27716d235e8ae54fc5455a1a2))
+* cb01-provider.ts ([38d7458](https://github.com/qwertyuiop8899/streamvix/commit/38d74588baafc43cda702565c5916d4de267c675))
+* eurostreaming-provider.ts ([cbeca98](https://github.com/qwertyuiop8899/streamvix/commit/cbeca989115df13b96cd58fd250f45794006854b))
+* extractor.ts ([88d2288](https://github.com/qwertyuiop8899/streamvix/commit/88d2288644644a09912f3b100fa16a624cc8b9f4))
+* guardahd-provider.ts ([9982034](https://github.com/qwertyuiop8899/streamvix/commit/99820349d888c5c0565edb827f33c99302ffdb32))
+* landing ([4f7fc15](https://github.com/qwertyuiop8899/streamvix/commit/4f7fc154e79a65a89c94c69f9b6b39b7fd220e87))
+* mixdrop.ts ([d077f0d](https://github.com/qwertyuiop8899/streamvix/commit/d077f0d317550b8d0c5541f98e91464acf971f95))
+
 ## [1.17.53](https://github.com/qwertyuiop8899/streamvix/compare/v1.17.52...v1.17.53) (2026-04-28)
 
 
