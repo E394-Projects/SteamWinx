@@ -88,6 +88,9 @@ export interface ExtractorConfig {
   tmdbApiKey?: string;
   mfpUrl?: string;
   mfpPsw?: string;
+  // When true the proxy backend is MediaFlow (mhdzumair/mediaflow-proxy) instead of EasyProxy.
+  // Affects URL construction for resolver-based hosts (VixCloud, Mixdrop, Sportsonline, Vavoo, ...).
+  useMediaFlow?: boolean;
   // When true (set via landing page "Local" checkbox) include direct stream variant (🔓)
   vixLocal?: boolean;
   // Base URL of the addon (protocol+host) to build synthetic endpoints
@@ -977,10 +980,14 @@ export async function getStreamContent(id: string, type: ContentType, config: Ex
     const cleanedMfpUrl = mfpUrl.endsWith('/') ? mfpUrl.slice(0, -1) : mfpUrl;
     const passwordParam = mfpPsw ? `&api_password=${encodeURIComponent(mfpPsw)}` : '';
 
-    // Approccio semplificato: passa l'URL della pagina VixSrc direttamente al proxy HLS generico.
-    // EasyProxy farà fetch della pagina, estrarrà il manifest e proxierà tutti gli URL interni.
-    const finalStreamUrl = `${cleanedMfpUrl}/proxy/hls/manifest.m3u8?d=${encodeURIComponent(url)}&redirect_stream=true${passwordParam}`;
-    console.log(`[VixSrc][Proxy] Built generic proxy URL: ${finalStreamUrl}`);
+    // Su EasyProxy passiamo l'URL della pagina VixSrc al proxy HLS generico (resolver custom server-side).
+    // Su MediaFlow Proxy invece serve l'extractor esplicito host=VixCloud + max_res=true per forzare la risoluzione massima.
+    // MediaFlow supporta sia /extractor/video sia /extractor/video.m3u8: usiamo .m3u8 (raccomandato per compatibilità player HLS).
+    const useMf = !!(config as any).useMediaFlow;
+    const finalStreamUrl = useMf
+      ? `${cleanedMfpUrl}/extractor/video.m3u8?host=VixCloud&d=${encodeURIComponent(url)}&redirect_stream=true&max_res=true${passwordParam}`
+      : `${cleanedMfpUrl}/proxy/hls/manifest.m3u8?d=${encodeURIComponent(url)}&redirect_stream=true${passwordParam}`;
+    console.log(`[VixSrc][Proxy] Built ${useMf ? 'MediaFlow extractor' : 'EasyProxy generic'} URL: ${finalStreamUrl}`);
 
     // Ottieni il titolo dalla TMDB API
     const tmdbApiTitle = type === 'movie' ? await getMovieTitle(id, tmdbApiKey) : await getSeriesTitle(id, tmdbApiKey);
@@ -1492,6 +1499,8 @@ export async function getStreamContent(id: string, type: ContentType, config: Ex
       }
     } catch {/* ignore */ }
     const passwordParam = config.mfpPsw ? `&api_password=${encodeURIComponent(config.mfpPsw)}` : '';
+    // Synthetic wrapper: il target è un m3u8 già risolto (synthetic FHD), quindi il classico
+    // /proxy/hls/manifest.m3u8 funziona su entrambi i backend (EasyProxy e MediaFlow).
     const wrapper = `${cleaned}/proxy/hls/manifest.m3u8?d=${encodeURIComponent(syntheticTarget)}&redirect_stream=true${passwordParam}`;
     const proxyOrig = streams.find(s => s.source === 'proxy');
     const baseName = proxyOrig ? proxyOrig.name.replace(/\s*🔒FHD$/, '').replace(/\s*🔒$/, '') : 'Proxy';
