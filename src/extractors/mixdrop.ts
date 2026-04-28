@@ -57,7 +57,12 @@ export class MixdropExtractor implements HostExtractor {
     // Build proxy stream URL
     const encoded = encodeURIComponent(embedUrl);
     const passwordParam = ctx.mfpPassword ? `&api_password=${encodeURIComponent(ctx.mfpPassword)}` : '';
-    const finalUrl = `${ctx.mfpUrl.replace(/\/$/, '')}/proxy/stream?d=${encoded}${passwordParam}`;
+    const mfpBase = ctx.mfpUrl.replace(/\/$/, '');
+    // EasyProxy: /proxy/stream auto-resolver custom server-side.
+    // MediaFlow: serve l'extractor esplicito host=Mixdrop (.m3u8 raccomandato per HLS).
+    const finalUrl = ctx.useMediaFlow
+      ? `${mfpBase}/extractor/video.m3u8?host=Mixdrop&d=${encoded}&redirect_stream=true${passwordParam}`
+      : `${mfpBase}/proxy/stream?d=${encoded}${passwordParam}`;
 
     if (debug) console.log('[Mixdrop] finalUrl=', finalUrl.substring(0, 100));
 
