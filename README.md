@@ -7,9 +7,7 @@ Un addon per Stremio che estrae sorgenti streaming dai siti vixsrc e animeunity 
 
 [Link di Installazione](https://streamvix.hayd.uk/)
 
-Istanza ElfHosted a pagamento CON Mediaflo Proxy incluso (Per Eventi Sportivi) 
-
-[Istanza ElfHosted con Mediaflow](https://store.elfhosted.com/product/streamvix/)
+Oppure, ottieni un'[istanza StreamViX gestita via ElfHosted](https://store.elfhosted.com/product/streamvix/?utm_source=github&utm_medium=readme&utm_campaign=streamvix-readme), con MediaFlow Proxy incluso (per eventi sportivi).
 
 
 ---
