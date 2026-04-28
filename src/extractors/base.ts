@@ -10,6 +10,7 @@ export interface ExtractorContext {
   mfpPassword?: string;
   countryCode?: string; // e.g. 'IT'
   titleHint?: string; // Italian localized title to force line1
+  useMediaFlow?: boolean; // true => MediaFlow Proxy backend; false/undefined => EasyProxy
 }
 
 export interface ExtractResult {
