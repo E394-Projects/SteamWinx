@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.17.53](https://github.com/qwertyuiop8899/streamvix/compare/v1.17.52...v1.17.53) (2026-04-28)
+
+
+### Bug Fixes
+
+* domains update ([7107fa0](https://github.com/qwertyuiop8899/streamvix/commit/7107fa0a6ab3cd42b8261d81d56ab975de589fef))
+* domains update ([92e39ea](https://github.com/qwertyuiop8899/streamvix/commit/92e39ea2e1190f6d5add420898b097e477204f73))
+
 ## [1.17.52](https://github.com/qwertyuiop8899/streamvix/compare/v1.17.51...v1.17.52) (2026-04-26)
 
 
