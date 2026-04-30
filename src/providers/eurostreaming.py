@@ -595,6 +595,7 @@ async def scraping_links(atag, MFP, client):
     delta_raw = []
     mix_raw = []
     max_raw = []
+    unknown_raw = []  # ancore non classificabili da text/href: tentiamo classificazione via redirect
     for a in soup:
         original_text = a.get_text(strip=True) or ''
         text = original_text.lower()
@@ -602,27 +603,37 @@ async def scraping_links(atag, MFP, client):
         if not href:
             continue
         combo = f"{text} {href.lower()}"
+        log('scraping_links: anchor', href[:120], '| text=', original_text[:60])
         if 'deltabit' in combo:
             delta_raw.append((href, original_text))
         elif 'mixdrop' in combo:
             mix_raw.append((href, original_text))
         elif 'maxstream' in combo or 'uprot' in combo:
             max_raw.append((href, original_text))
+        else:
+            # Heuristica: ancore con slug breve tipo /max/, /ms/, /mxs/ → potenziali maxstream
+            if re.search(r'/(max|maxs|mxs|ms|maxstream|uprot)/[A-Za-z0-9]+', href, re.I):
+                log('scraping_links: candidate maxstream by slug', href[:120])
+                max_raw.append((href, original_text))
+            else:
+                # Ancore sconosciute su redirector tipo clicka.cc le proviamo a risolvere
+                # per classificarle dal dominio finale (uprot.net/maxstream.* → maxstream).
+                if re.search(r'(clicka\.|/clicka/|/go/|/out/|/redir|/link/)', href, re.I):
+                    unknown_raw.append((href, original_text))
+                    log('scraping_links: unknown clicka-like anchor (will try resolve)', href[:120])
     results = []
-    # DeltaBit first (collect all)
+    # DeltaBit first (collect all) — pass raw clicka.cc/delta/<id> URL through.
+    # MFP extractor (host=deltabit) handles safego captcha + DeltaBit XFileSharing resolution server-side.
     seen = set()
     for raw, anchor_text in delta_raw:
         if raw in seen:
             continue
         seen.add(raw)
         try:
-            resolved = await resolve_clicka_to_host(raw, client)
-            if not resolved:
+            url = str(raw).strip()
+            if not url:
                 continue
-            url, name = await deltabit(resolved, client)
-            if url:
-                # Prefer extracted filename (name) else fallback to anchor text
-                results.append((url, name or anchor_text, 'deltabit'))
+            results.append((url, anchor_text, 'deltabit'))
         except Exception as e:
             log('scraping_links: delta error', e)
     # MixDrop (collect all distinct)
@@ -641,6 +652,40 @@ async def scraping_links(atag, MFP, client):
                 results.append((url, name or anchor_text, 'mixdrop'))
         except Exception as e:
             log('scraping_links: mixdrop error', e)
+    # Tentiamo classificazione delle ancore sconosciute risolvendole: se il
+    # dominio finale è uprot.net/maxstream.*/ → trattiamo come maxstream.
+    for raw, anchor_text in unknown_raw:
+        try:
+            resolved = await resolve_clicka_to_host(raw, client)
+            if not resolved:
+                continue
+            url_res = str(resolved).strip()
+            host_l = ''
+            try:
+                host_l = urllib.parse.urlparse(url_res).hostname or ''
+                host_l = host_l.lower()
+            except Exception:
+                pass
+            if 'uprot' in host_l or 'maxstream' in host_l or re.search(r'\.maxstream\.', url_res, re.I):
+                log('scraping_links: unknown anchor classified as maxstream via dest host', host_l, url_res[:140])
+                max_raw.append((url_res, anchor_text))  # salviamo direttamente l'URL già risolto
+            elif 'deltabit' in host_l or '/delta/' in url_res.lower():
+                log('scraping_links: unknown anchor classified as deltabit via dest', url_res[:140])
+                # Per DeltaBit serve l'URL clicka grezzo (extractor MFP gestisce safego),
+                # ma se è già post-clicka possiamo passarlo lo stesso: l'extractor accetta entrambi.
+                results.append((url_res, anchor_text, 'deltabit'))
+            elif 'mixdrop' in host_l:
+                log('scraping_links: unknown anchor classified as mixdrop via dest', url_res[:140])
+                try:
+                    url, name = await mixdrop(url_res, MFP, client)
+                    if url:
+                        results.append((url, name or anchor_text, 'mixdrop'))
+                except Exception as ee:
+                    log('scraping_links: unknown→mixdrop error', ee)
+            else:
+                log('scraping_links: unknown anchor unmatched after resolve', host_l, url_res[:140])
+        except Exception as e:
+            log('scraping_links: unknown resolve error', e)
     # Maxstream / uprot (collect all distinct) — pass through resolved URL,
     # downstream wrapper will route via MFP /extractor/video.m3u8?host=maxstream
     seen_max = set()
@@ -649,7 +694,12 @@ async def scraping_links(atag, MFP, client):
             continue
         seen_max.add(raw)
         try:
-            resolved = await resolve_clicka_to_host(raw, client)
+            # Se è già un URL host (uprot.net/.../maxstream.*) NON ri-risolviamo: passiamo diretto.
+            already_host = bool(re.search(r'(uprot\.|maxstream\.)', raw, re.I))
+            if already_host:
+                resolved = raw
+            else:
+                resolved = await resolve_clicka_to_host(raw, client)
             if not resolved:
                 continue
             url = str(resolved).strip()
@@ -666,7 +716,11 @@ async def scraping_links(atag, MFP, client):
         except Exception as e:
             log('scraping_links: maxstream error', e)
     if results:
-        log('scraping_links: collected hosts', len(results))
+        log('scraping_links: collected hosts', len(results), 'breakdown', {
+            'deltabit': sum(1 for r in results if r[2]=='deltabit'),
+            'mixdrop': sum(1 for r in results if r[2]=='mixdrop'),
+            'maxstream': sum(1 for r in results if r[2]=='maxstream'),
+        })
     else:
         log('scraping_links: no supported hosts found')
     return results
