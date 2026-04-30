@@ -208,8 +208,22 @@ export class EurostreamingProvider {
             // Senza MFP non possiamo risolvere uprot/captcha: scarta lo stream
             continue;
           }
-        } else if (/deltabit|\/delta\//i.test(s.url)) {
+        } else if (/deltabit|\/delta\//i.test(s.url) || /clicka\.cc\/delta\//i.test(s.url)) {
           playerName = 'Deltabit';
+          // L'URL grezzo è del tipo https://clicka.cc/delta/<id>: serve passarlo all'extractor
+          // EasyProxy (host=deltabit) che gestisce safego/captcha + risoluzione XFileSharing server-side.
+          // MediaFlow Proxy NON ha l'extractor deltabit -> scartiamo lo stream in quel caso.
+          if (this.config.mfpUrl && !(this.config as any).useMediaFlow) {
+            const base = this.config.mfpUrl.replace(/\/$/, '');
+            const encoded = encodeURIComponent(s.url);
+            const passwordParam = this.config.mfpPassword ? `&api_password=${encodeURIComponent(this.config.mfpPassword)}` : '';
+            // EasyProxy: /extractor/video.mp4?host=deltabit (DeltaBit serve MP4 diretto).
+            finalUrl = `${base}/extractor/video.mp4?host=deltabit&d=${encoded}&redirect_stream=true${passwordParam}`;
+          } else {
+            // Senza EasyProxy non possiamo risolvere clicka.cc -> safego -> deltabit: scarta lo stream.
+            console.log('[Eurostreaming] skip deltabit (requires EasyProxy; MediaFlow has no deltabit extractor)', s.url.substring(0, 120));
+            continue;
+          }
         }
       } catch { /* ignore parse */ }
   const second = `${langTag} • ${playerName}`;
